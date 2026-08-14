@@ -26,7 +26,7 @@ def search_papers(query: str, max_results: int = 5) -> list[dict]:
         papers.append({
             "title": r.get("title", "No title available"),
             "authors": r.get("authorString", "Authors not listed"),
-            "journal": r.get("journalTitle", "Journal not listed"),
+            "journal": r.get("journalInfo", {}).get("journal", {}).get("title", "Journal not listed"),
             "year": r.get("pubYear", "Year not listed"),
             "abstract": r.get("abstractText", "No abstract available"),
             "link": f"https://europepmc.org/article/{r.get('source', 'MED')}/{r.get('id', '')}",
