@@ -18,14 +18,14 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="anthropic/claude-haiku-4.5",
+    model="openai/gpt-oss-20b:free",
     max_tokens=300,
     messages=[
         {"role": "user", "content": "In one sentence, what is pharmacovigilance?"}
     ],
 )
 
-print("Claude's response (via OpenRouter):")
+print("GPT's response (via OpenRouter):")
 print(response.choices[0].message.content)
 
 print("\nIf you see a real answer above, your OpenRouter key and connection are working.")
