@@ -14,20 +14,23 @@ This is called "tool calling" or "function calling." The LLM never
 executes code itself — it only ever REQUESTS a tool by name with
 arguments; our code is what actually runs it.
 
-
+Run this with: python app/agent/orchestrator.py
+(run from the project root, so the .env file is found correctly)
 """
 
 import os
 import json
+import time
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
-# These imports work because this script's own folder (app/agent) is
-# automatically added to Python's search path when you run it directly,
-# and "tools" is a subfolder right there with an __init__.py in it.
-from tools.research_search import search_papers
-from tools.pharmacovigilance_search import search_adverse_events
-from tools.math_engine import solve_expression, solve_equation, first_order_half_life, calculate_dosage
+# These are "absolute imports" from the app package, which works both
+# when this file is run as part of the package (e.g. imported by main.py)
+# and when run directly with `python -m app.agent.orchestrator` from the
+# project root.
+from app.agent.tools.research_search import search_papers
+from app.agent.tools.pharmacovigilance_search import search_adverse_events
+from app.agent.tools.math_engine import solve_expression, solve_equation, first_order_half_life, calculate_dosage
 
 load_dotenv()
 
@@ -178,27 +181,57 @@ def call_tool(name: str, args: dict):
 # STEP 3: The orchestration loop itself.
 # ---------------------------------------------------------------------------
 
-def run_agent(user_question: str, max_turns: int = 5) -> str:
-    messages = [{"role": "user", "content": user_question}]
+def run_agent(user_question: str, conversation_history: list = None, max_turns: int = 5):
+    """
+    Runs the agent loop for one question.
+
+    Args:
+        user_question: the student's question
+        conversation_history: optional list of prior messages, so the
+            backend can maintain a multi-turn conversation per student
+            session instead of treating every message as brand new
+        max_turns: safety limit on tool-call rounds
+
+    Returns:
+        (answer_text, updated_history) — the updated_history should be
+        passed back in on the NEXT call for this same conversation, so
+        the agent remembers what was already discussed.
+    """
+    messages = list(conversation_history) if conversation_history else []
+    messages.append({"role": "user", "content": user_question})
 
     for turn in range(max_turns):
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            tools=TOOLS,
-            max_tokens=800,
-        )
+        # Free-tier models share a limited request pool across everyone
+        # using OpenRouter at once, so occasional rate-limit errors are
+        # expected, not a sign anything is broken. We retry a few times
+        # with a short wait, rather than failing the whole conversation
+        # over a temporary, shared-resource hiccup.
+        response = None
+        last_error = None
+        for attempt in range(4):
+            try:
+                response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    tools=TOOLS,
+                    max_tokens=800,
+                )
+                break
+            except RateLimitError as e:
+                last_error = e
+                wait_seconds = 25
+                print(f"  [Rate-limited, waiting {wait_seconds}s before retry {attempt + 1}/4...]")
+                time.sleep(wait_seconds)
+
+        if response is None:
+            return f"The free model is currently rate-limited and retries were exhausted. Try again in a minute. ({last_error})", messages
 
         message = response.choices[0].message
+        messages.append(message.model_dump())
 
         # If the model didn't ask for a tool, it's giving its final answer.
         if not message.tool_calls:
-            return message.content
-
-        # The model wants to call one or more tools. Save its request in
-        # the conversation, then run each tool and add the results back in,
-        # so the next call has everything it needs to respond properly.
-        messages.append(message.model_dump())
+            return message.content, messages
 
         for tool_call in message.tool_calls:
             name = tool_call.function.name
@@ -213,7 +246,7 @@ def run_agent(user_question: str, max_turns: int = 5) -> str:
                 "content": json.dumps(result, default=str),
             })
 
-    return "The agent couldn't reach a final answer within the turn limit."
+    return "The agent couldn't reach a final answer within the turn limit.", messages
 
 
 if __name__ == "__main__":
@@ -227,5 +260,5 @@ if __name__ == "__main__":
     for q in test_questions:
         print("=" * 70)
         print(f"Question: {q}\n")
-        answer = run_agent(q)
+        answer, _ = run_agent(q)
         print(f"\nAnswer: {answer}\n")

@@ -2,3 +2,5 @@
 python-dotenv
 requests
 sympy
+fastapi
+uvicorn[standard]
