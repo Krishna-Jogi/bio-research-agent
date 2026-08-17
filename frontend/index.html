@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Field Notes — Biology Research Agent</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --paper: #F1EEE1;
+            --paper-deep: #E7E2D0;
+            --ink: #1E2A20;
+            --ink-soft: #4B5A4C;
+            --moss: #1F3B2C;
+            --moss-light: #DCE7DA;
+            --amber: #8A6A22;
+            --amber-bright: #B7893A;
+            --line: #D2CBB2;
+            --card: #FBFAF4;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: 'IBM Plex Sans', sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        header {
+            padding: 28px 24px 18px;
+            border-bottom: 1px solid var(--line);
+            background: var(--paper);
+        }
+
+        .label-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            max-width: 760px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        h1 {
+            font-family: 'Source Serif 4', serif;
+            font-weight: 700;
+            font-size: 1.65rem;
+            margin: 0;
+            letter-spacing: -0.01em;
+            color: var(--moss);
+        }
+
+        .tagline {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--amber);
+        }
+
+        .fields {
+            max-width: 760px;
+            margin: 14px auto 0;
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--ink-soft);
+        }
+
+        .fields span b {
+            color: var(--ink);
+            font-weight: 500;
+        }
+
+        main {
+            flex: 1;
+            max-width: 760px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 24px 20px 140px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .empty-state {
+            margin-top: 40px;
+            padding: 22px 20px;
+            border: 1px dashed var(--line);
+            border-radius: 2px;
+            color: var(--ink-soft);
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }
+
+        .empty-state b {
+            color: var(--moss);
+        }
+
+        .chip-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+        }
+
+        .chip {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            padding: 6px 10px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            cursor: pointer;
+            color: var(--ink-soft);
+        }
+
+        .chip:hover {
+            border-color: var(--amber-bright);
+            color: var(--amber);
+        }
+
+        .msg {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            animation: rise 0.25s ease;
+        }
+
+        @keyframes rise {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .msg.user {
+            align-items: flex-end;
+        }
+
+        .msg.agent {
+            align-items: flex-start;
+        }
+
+        .who {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--ink-soft);
+        }
+
+        .bubble {
+            max-width: 88%;
+            padding: 14px 16px;
+            border-radius: 2px;
+            line-height: 1.6;
+            font-size: 0.94rem;
+        }
+
+        .msg.user .bubble {
+            background: var(--moss);
+            color: #F2F3EC;
+            border-top-right-radius: 0;
+        }
+
+        .msg.agent .bubble {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-left: 3px solid var(--amber-bright);
+            border-top-left-radius: 0;
+            color: var(--ink);
+        }
+
+        .bubble p {
+            margin: 0 0 10px;
+        }
+
+        .bubble p:last-child {
+            margin-bottom: 0;
+        }
+
+        .bubble table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+            font-size: 0.85rem;
+        }
+
+        .bubble th,
+        .bubble td {
+            border: 1px solid var(--line);
+            padding: 6px 8px;
+            text-align: left;
+        }
+
+        .bubble th {
+            background: var(--moss-light);
+            font-weight: 600;
+        }
+
+        .bubble a {
+            color: var(--amber);
+            text-decoration: underline;
+        }
+
+        .bubble code {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--moss-light);
+            padding: 1px 5px;
+            border-radius: 2px;
+            font-size: 0.85em;
+        }
+
+        .tool-tag {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.68rem;
+            color: var(--amber);
+            background: #FBF3E3;
+            border: 1px solid #E4D3A6;
+            padding: 3px 8px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        .thinking {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--ink-soft);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+        }
+
+        .dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--amber-bright);
+            animation: pulse 1.1s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            80%,
+            100% {
+                opacity: 0.25;
+            }
+
+            40% {
+                opacity: 1;
+            }
+        }
+
+        form {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, var(--paper) 65%, transparent);
+            padding: 24px 20px 22px;
+        }
+
+        .composer {
+            max-width: 760px;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 6px 6px 6px 14px;
+        }
+
+        textarea {
+            flex: 1;
+            border: none;
+            background: transparent;
+            resize: none;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.94rem;
+            color: var(--ink);
+            padding: 10px 0;
+            outline: none;
+            max-height: 140px;
+        }
+
+        textarea::placeholder {
+            color: #93917E;
+        }
+
+        button {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: var(--moss);
+            color: #F2F3EC;
+            border: none;
+            border-radius: 2px;
+            padding: 0 20px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        button:hover {
+            background: #294F39;
+        }
+
+        button:disabled {
+            background: #A9A48D;
+            cursor: not-allowed;
+        }
+
+        button:focus-visible,
+        textarea:focus-visible,
+        .chip:focus-visible {
+            outline: 2px solid var(--amber-bright);
+            outline-offset: 2px;
+        }
+
+        .error-note {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            color: #8A2E2E;
+            max-width: 760px;
+            margin: 8px auto 0;
+            padding: 0 20px;
+        }
+
+        @media (max-width:600px) {
+            h1 {
+                font-size: 1.35rem;
+            }
+
+            .bubble {
+                max-width: 94%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="label-row">
+            <h1>Field Notes</h1>
+            <span class="tagline">Biology &amp; Pharmacovigilance Agent</span>
+        </div>
+        <div class="fields">
+            <span>Sources: <b>PubMed · openFDA · Govt. references</b></span>
+            <span>Status: <b id="status-text">Connecting…</b></span>
+        </div>
+    </header>
+
+    <main id="chat">
+        <div class="empty-state" id="empty-state">
+            <b>Ask a question about biology, pharmacology, or drug safety.</b>
+            This agent searches real research papers and pharmacovigilance data before answering — nothing is made up.
+            <div class="chip-row">
+                <span class="chip" data-q="What side effects have been reported for metformin?">Side effects of
+                    metformin</span>
+                <span class="chip" data-q="Find me recent research papers on malaria drug resistance.">Malaria drug
+                    resistance papers</span>
+                <span class="chip"
+                    data-q="Calculate the half-life of a drug with a first-order rate constant of 0.08 per hour.">Half-life
+                    calculation</span>
+            </div>
+        </div>
+    </main>
+
+    <form id="composer-form">
+        <div class="composer">
+            <textarea id="input" rows="1" placeholder="Ask about a drug, a topic, or a calculation…"
+                required></textarea>
+            <button type="submit" id="send-btn">Send</button>
+        </div>
+        <div class="error-note" id="error-note" style="display:none;"></div>
+    </form>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/chat";
+        const sessionId = "session_" + Math.random().toString(36).slice(2, 10);
+
+        const chat = document.getElementById("chat");
+        const emptyState = document.getElementById("empty-state");
+        const form = document.getElementById("composer-form");
+        const input = document.getElementById("input");
+        const sendBtn = document.getElementById("send-btn");
+        const statusText = document.getElementById("status-text");
+        const errorNote = document.getElementById("error-note");
+
+        marked.setOptions({ breaks: true });
+
+        function addMessage(role, htmlContent, isMarkdown) {
+            emptyState.style.display = "none";
+            const wrap = document.createElement("div");
+            wrap.className = "msg " + role;
+
+            const who = document.createElement("div");
+            who.className = "who";
+            who.textContent = role === "user" ? "You" : "Field Notes";
+            wrap.appendChild(who);
+
+            const bubble = document.createElement("div");
+            bubble.className = "bubble";
+            bubble.innerHTML = isMarkdown ? marked.parse(htmlContent) : escapeHtml(htmlContent);
+            wrap.appendChild(bubble);
+
+            chat.appendChild(wrap);
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+            return bubble;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement("div");
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function addThinking() {
+            const wrap = document.createElement("div");
+            wrap.className = "msg agent";
+            wrap.id = "thinking-indicator";
+            wrap.innerHTML = `
+      <div class="who">Field Notes</div>
+      <div class="bubble thinking">
+        Consulting sources
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>`;
+            chat.appendChild(wrap);
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+        }
+
+        function removeThinking() {
+            const el = document.getElementById("thinking-indicator");
+            if (el) el.remove();
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch("http://127.0.0.1:8000/");
+                if (res.ok) {
+                    statusText.textContent = "Online";
+                } else {
+                    statusText.textContent = "Unreachable";
+                }
+            } catch (e) {
+                statusText.textContent = "Backend not running";
+            }
+        }
+        checkStatus();
+
+        async function sendMessage(message) {
+            errorNote.style.display = "none";
+            addMessage("user", message, false);
+            input.value = "";
+            input.style.height = "auto";
+            sendBtn.disabled = true;
+            addThinking();
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message, session_id: sessionId })
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Server responded with status ${res.status}`);
+                }
+
+                const data = await res.json();
+                removeThinking();
+                addMessage("agent", data.answer, true);
+            } catch (err) {
+                removeThinking();
+                errorNote.style.display = "block";
+                errorNote.textContent =
+                    "Couldn't reach the agent. Confirm the backend is running (uvicorn app.main:app --reload) at 127.0.0.1:8000. " +
+                    "(" + err.message + ")";
+            } finally {
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const message = input.value.trim();
+            if (!message) return;
+            sendMessage(message);
+        });
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+        });
+
+        input.addEventListener("input", () => {
+            input.style.height = "auto";
+            input.style.height = Math.min(input.scrollHeight, 140) + "px";
+        });
+
+        document.querySelectorAll(".chip").forEach(chip => {
+            chip.addEventListener("click", () => {
+                sendMessage(chip.getAttribute("data-q"));
+            });
+        });
+    </script>
+
+</body>
+
+</html>
