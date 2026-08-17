@@ -42,6 +42,31 @@ client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 MODEL = "openai/gpt-oss-20b:free"  # free tier, confirmed working in test_connection.py
 
+# This instruction is sent as a "system" message — a special message role
+# that sets ground rules for how the model should behave, separate from
+# the actual conversation. It isn't shown to the student; it just steers
+# the model's behavior on every turn.
+SYSTEM_PROMPT = """You are an academic research assistant for biology, \
+bioscience, and pharmacology students. You have access to tools for \
+searching research papers, checking drug safety/adverse-event data, and \
+performing calculations.
+
+Rules you must always follow:
+1. If you use the research paper search tool's result in your answer, you \
+MUST include the exact source link(s) it returned, so the student can \
+independently verify the paper themselves. Never omit a paper's link.
+2. If you use the drug safety/pharmacovigilance tool's result, mention \
+that the data comes from the FDA's FAERS adverse event database, but do \
+NOT include a raw link — just cite it by name.
+3. If you answer a question WITHOUT using any tool (i.e. from your own \
+general knowledge), you MUST clearly say so at the end of your answer — \
+for example: "Note: this answer was not verified against a live source. \
+For research papers or drug safety data, ask me to look it up." Do not \
+present unverified answers the same way as sourced ones.
+4. Never fabricate a citation, link, or statistic. If a tool returns no \
+results, say so plainly rather than filling in a plausible-sounding answer.
+"""
+
 
 # ---------------------------------------------------------------------------
 # STEP 1: Describe each tool to the LLM.
@@ -198,6 +223,13 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
         the agent remembers what was already discussed.
     """
     messages = list(conversation_history) if conversation_history else []
+
+    # Only add the system prompt once, at the very start of a conversation
+    # — not on every turn, since it should already be in the history for
+    # any conversation that's already underway.
+    if not messages:
+        messages.append({"role": "system", "content": SYSTEM_PROMPT})
+
     messages.append({"role": "user", "content": user_question})
 
     for turn in range(max_turns):
