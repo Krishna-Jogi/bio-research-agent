@@ -14,7 +14,8 @@ FastAPI auto-generates an interactive page where you can try the
 /chat endpoint directly, no separate frontend needed yet.
 """
 
-from fastapi import FastAPI
+from datetime import date
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -40,6 +41,43 @@ app.add_middleware(
 # persistence"), but this is enough to prove multi-turn conversation works.
 sessions: dict[str, list] = {}
 
+# --- Rate limiting ---------------------------------------------------
+# Purpose: without this, one student (or a bug, or someone finding the
+# URL) could send unlimited requests, exhausting the free OpenRouter
+# quota (200/day total) for every other student. This is the single
+# most important protection for a free, shared tool.
+#
+# Tracked as: {session_id: {"date": "2026-08-17", "count": 5}}
+# The count resets automatically whenever the stored date is not today.
+DAILY_MESSAGE_LIMIT = 20
+
+usage_tracker: dict[str, dict] = {}
+
+
+def check_and_record_usage(session_id: str):
+    """
+    Raises an HTTPException (429 Too Many Requests) if this session has
+    hit today's message limit. Otherwise, records one more message used.
+    """
+    today = str(date.today())
+    record = usage_tracker.get(session_id)
+
+    if record is None or record["date"] != today:
+        # First message today for this session — start a fresh count.
+        usage_tracker[session_id] = {"date": today, "count": 1}
+        return
+
+    if record["count"] >= DAILY_MESSAGE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Daily limit of {DAILY_MESSAGE_LIMIT} messages reached for this session. "
+                "This resets at midnight. Thanks for using Field Notes — see you tomorrow!"
+            ),
+        )
+
+    record["count"] += 1
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -59,6 +97,8 @@ def root():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
+    check_and_record_usage(request.session_id)
+
     history = sessions.get(request.session_id, [])
 
     answer, updated_history = run_agent(request.message, conversation_history=history)

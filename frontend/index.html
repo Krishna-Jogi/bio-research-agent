@@ -508,6 +508,10 @@
                 });
 
                 if (!res.ok) {
+                    if (res.status === 429) {
+                        const errData = await res.json().catch(() => null);
+                        throw new Error(errData?.detail || "Daily message limit reached. Please come back tomorrow.");
+                    }
                     throw new Error(`Server responded with status ${res.status}`);
                 }
 
