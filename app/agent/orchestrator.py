@@ -31,6 +31,7 @@ from openai import OpenAI, RateLimitError
 from app.agent.tools.research_search import search_papers
 from app.agent.tools.pharmacovigilance_search import search_adverse_events
 from app.agent.tools.math_engine import solve_expression, solve_equation, first_order_half_life, calculate_dosage
+from app.rag.retrieve import search_government_sources
 
 load_dotenv()
 
@@ -58,12 +59,15 @@ independently verify the paper themselves. Never omit a paper's link.
 2. If you use the drug safety/pharmacovigilance tool's result, mention \
 that the data comes from the FDA's FAERS adverse event database, but do \
 NOT include a raw link — just cite it by name.
-3. If you answer a question WITHOUT using any tool (i.e. from your own \
+3. If you use the government source search tool's result, cite the \
+document title AND include the source URL it returned, so the student \
+can verify the original government guideline themselves.
+4. If you answer a question WITHOUT using any tool (i.e. from your own \
 general knowledge), you MUST clearly say so at the end of your answer — \
 for example: "Note: this answer was not verified against a live source. \
 For research papers or drug safety data, ask me to look it up." Do not \
 present unverified answers the same way as sourced ones.
-4. Never fabricate a citation, link, or statistic. If a tool returns no \
+5. Never fabricate a citation, link, or statistic. If a tool returns no \
 results, say so plainly rather than filling in a plausible-sounding answer.
 """
 
@@ -172,6 +176,39 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_government_documents",
+            "description": (
+                "Search official government guidance documents for topics "
+                "that don't have a live API — pharmacovigilance procedures, "
+                "PTC (plant tissue culture), nutraceuticals, water quality, "
+                "environment, chemical engineering standards, and clinical "
+                "research guidelines. Use this for procedural or regulatory "
+                "questions, e.g. 'how do I report an adverse drug reaction' "
+                "or 'what is an Individual Case Safety Report'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The question or topic to search for",
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": (
+                            "Optional: restrict the search to one domain, e.g. "
+                            "'pharmacovigilance'. Leave blank to search all "
+                            "ingested domains."
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -186,6 +223,9 @@ def call_tool(name: str, args: dict):
 
     if name == "search_drug_safety":
         return search_adverse_events(args["drug_name"])
+
+    if name == "search_government_documents":
+        return search_government_sources(args["query"], args.get("domain"))
 
     if name == "do_math":
         op = args["operation"]
@@ -287,6 +327,7 @@ if __name__ == "__main__":
         "What is the half-life of a drug with a first-order rate constant of 0.05 per hour?",
         "What side effects have been reported for metformin?",
         "Find me recent research papers on malaria drug resistance.",
+        "How should a suspected adverse drug reaction be reported in India?",
     ]
 
     for q in test_questions:
