@@ -4,3 +4,6 @@ requests
 sympy
 fastapi
 uvicorn[standard]
+chromadb
+sentence-transformers
+pypdf

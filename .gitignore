@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# RAG vector database (regenerable, don't bloat the repo)
+app/rag/chroma_db/
+*.sqlite3
