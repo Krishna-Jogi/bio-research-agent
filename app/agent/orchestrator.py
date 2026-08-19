@@ -303,6 +303,16 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
         # If the model didn't ask for a tool, it's giving its final answer.
         if not message.tool_calls:
+            # Free-tier models occasionally return an empty response (no
+            # tool call AND no text) — usually under high load. Rather
+            # than crash trying to send back an empty answer, give the
+            # student a clear, honest message instead.
+            if not message.content:
+                return (
+                    "The agent didn't return a usable answer this time — this can happen "
+                    "occasionally with the free model under high load. Please try asking again.",
+                    messages,
+                )
             return message.content, messages
 
         for tool_call in message.tool_calls:

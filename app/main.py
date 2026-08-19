@@ -101,7 +101,20 @@ def chat(request: ChatRequest):
 
     history = sessions.get(request.session_id, [])
 
-    answer, updated_history = run_agent(request.message, conversation_history=history)
+    try:
+        answer, updated_history = run_agent(request.message, conversation_history=history)
+    except Exception as e:
+        # Catch-all safety net: any unexpected error (network hiccup, a
+        # malformed response from the free model, etc.) becomes a clear
+        # message to the student instead of a raw 500 crash.
+        print(f"  [ERROR in run_agent: {e}]")
+        return ChatResponse(
+            answer="Something went wrong answering that question. Please try again.",
+            session_id=request.session_id,
+        )
+
+    if not answer:
+        answer = "The agent didn't return a usable answer. Please try asking again."
 
     sessions[request.session_id] = updated_history
 
