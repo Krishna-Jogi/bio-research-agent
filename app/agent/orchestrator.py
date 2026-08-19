@@ -299,18 +299,39 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
             return f"The free model is currently rate-limited and retries were exhausted. Try again in a minute. ({last_error})", messages
 
         message = response.choices[0].message
+
+        # Free-tier models occasionally return a completely empty response
+        # (no tool call AND no text) under load. Rather than give up
+        # immediately, retry the same turn a couple of times first.
+        if not message.tool_calls and not message.content:
+            print("  [Empty response from model, retrying...]")
+            retried = False
+            for _ in range(2):
+                time.sleep(3)
+                retry_response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    tools=TOOLS,
+                    max_tokens=800,
+                )
+                message = retry_response.choices[0].message
+                if message.tool_calls or message.content:
+                    retried = True
+                    break
+            if not retried:
+                return (
+                    "The agent didn't return a usable answer after retrying — this can happen "
+                    "occasionally with the free model under high load. Please try asking again.",
+                    messages,
+                )
+
         messages.append(message.model_dump())
 
         # If the model didn't ask for a tool, it's giving its final answer.
         if not message.tool_calls:
-            # Free-tier models occasionally return an empty response (no
-            # tool call AND no text) — usually under high load. Rather
-            # than crash trying to send back an empty answer, give the
-            # student a clear, honest message instead.
             if not message.content:
                 return (
-                    "The agent didn't return a usable answer this time — this can happen "
-                    "occasionally with the free model under high load. Please try asking again.",
+                    "The agent didn't return a usable answer this time — please try asking again.",
                     messages,
                 )
             return message.content, messages

@@ -1,5 +1,16 @@
 ﻿"""
 Research paper search tool using Europe PMC's free, public REST API.
+
+Purpose: given a topic, return real research papers (title, authors,
+journal, year, abstract snippet, and a link) so students can find
+relevant literature for their research.
+
+This is a STANDALONE function right now — no LLM involved. We're
+testing that the data-fetching logic works correctly on its own,
+before wiring it into the agent's tool-calling loop later.
+
+Europe PMC is free and requires no API key, so this works even
+before OpenRouter credits are added.
 """
 
 import requests
@@ -8,27 +19,47 @@ EUROPE_PMC_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
 
 def search_papers(query: str, max_results: int = 5) -> list[dict]:
+    """
+    Search Europe PMC for papers matching the query.
+
+    Args:
+        query: topic or keywords to search for, e.g. "malaria drug resistance"
+        max_results: how many papers to return (default 5)
+
+    Returns:
+        A list of dicts, each with title, authors, journal, year,
+        abstract, and a link to the paper.
+    """
     params = {
         "query": query,
         "format": "json",
         "pageSize": max_results,
-        "resultType": "core",
+        "resultType": "core",  # gives us abstract text, not just metadata
     }
 
     response = requests.get(EUROPE_PMC_URL, params=params, timeout=10)
-    response.raise_for_status()
+    response.raise_for_status()  # raises an error if the request failed
 
     data = response.json()
     results = data.get("resultList", {}).get("result", [])
 
     papers = []
     for r in results:
+        abstract = r.get("abstractText", "No abstract available")
+        # Truncate long abstracts before sending to the LLM — full-length
+        # abstracts across 5 papers adds up to a lot of tokens, which can
+        # overwhelm smaller/free models and increase cost with paid ones.
+        # A concise summary is enough for the LLM to synthesize an answer;
+        # the full paper is always available via the link.
+        if len(abstract) > 500:
+            abstract = abstract[:500].rsplit(" ", 1)[0] + "..."
+
         papers.append({
             "title": r.get("title", "No title available"),
             "authors": r.get("authorString", "Authors not listed"),
             "journal": r.get("journalInfo", {}).get("journal", {}).get("title", "Journal not listed"),
             "year": r.get("pubYear", "Year not listed"),
-            "abstract": r.get("abstractText", "No abstract available"),
+            "abstract": abstract,
             "link": f"https://europepmc.org/article/{r.get('source', 'MED')}/{r.get('id', '')}",
         })
 
@@ -36,13 +67,14 @@ def search_papers(query: str, max_results: int = 5) -> list[dict]:
 
 
 if __name__ == "__main__":
+    # Quick manual test — run this file directly to confirm it works
     test_query = "pharmacovigilance adverse drug reactions"
     print(f"Searching for: {test_query}\n")
 
     papers = search_papers(test_query, max_results=3)
 
     if not papers:
-        print("No papers found - check your internet connection or query.")
+        print("No papers found — check your internet connection or query.")
     else:
         for i, paper in enumerate(papers, 1):
             print(f"--- Paper {i} ---")
