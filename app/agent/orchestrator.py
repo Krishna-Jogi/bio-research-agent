@@ -60,11 +60,12 @@ independently verify the paper themselves. Never omit a paper's link.
 that the data comes from the FDA's FAERS adverse event database, but do \
 NOT include a raw link — just cite it by name.
 3. If you use the government source search tool's result, cite the \
-document title AND include the source URL it returned, so the student \
-can verify the original government guideline themselves. If the results \
-returned don't clearly answer the question, say plainly that the \
-ingested documents don't cover this specific topic yet — do NOT call \
-the same tool again with a reworded query more than once per question.
+document title AND include the source URL it returned. Trust the tool's \
+top results — if they mention the topic you asked about, even briefly \
+or as part of a broader passage, that counts as relevant and you should \
+use it. Only say the ingested documents don't cover the topic if NONE \
+of the returned excerpts mention it at all. Do NOT call the same tool \
+again with a reworded query more than once per question.
 4. If you answer a question WITHOUT using any tool (i.e. from your own \
 general knowledge), you MUST clearly say so at the end of your answer — \
 for example: "Note: this answer was not verified against a live source. \
@@ -201,10 +202,13 @@ TOOLS = [
                     },
                     "domain": {
                         "type": "string",
+                        "enum": ["pharmacovigilance", "nutraceuticals", "water"],
                         "description": (
-                            "Optional: restrict the search to one domain, e.g. "
-                            "'pharmacovigilance'. Leave blank to search all "
-                            "ingested domains."
+                            "Restrict the search to one domain. Currently ingested: "
+                            "'pharmacovigilance' (ADR reporting, ICSRs), "
+                            "'nutraceuticals' (FSSAI health supplement regulations), "
+                            "'water' (WHO pharmaceutical water quality/GMP). "
+                            "Omit only if the question doesn't clearly fit one of these."
                         ),
                     },
                 },
