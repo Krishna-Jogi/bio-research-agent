@@ -61,7 +61,10 @@ that the data comes from the FDA's FAERS adverse event database, but do \
 NOT include a raw link — just cite it by name.
 3. If you use the government source search tool's result, cite the \
 document title AND include the source URL it returned, so the student \
-can verify the original government guideline themselves.
+can verify the original government guideline themselves. If the results \
+returned don't clearly answer the question, say plainly that the \
+ingested documents don't cover this specific topic yet — do NOT call \
+the same tool again with a reworded query more than once per question.
 4. If you answer a question WITHOUT using any tool (i.e. from your own \
 general knowledge), you MUST clearly say so at the end of your answer — \
 for example: "Note: this answer was not verified against a live source. \
@@ -297,6 +300,11 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
         if response is None:
             return f"The free model is currently rate-limited and retries were exhausted. Try again in a minute. ({last_error})", messages
+
+        if not response.choices:
+            # Occasionally the free tier returns a technically-successful
+            # response with no usable content at all (malformed under load).
+            return "The free model returned an unusable response. Please try asking again.", messages
 
         message = response.choices[0].message
 
