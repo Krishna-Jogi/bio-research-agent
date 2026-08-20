@@ -296,6 +296,12 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
     messages.append({"role": "user", "content": user_question})
 
+    # Track whether any tool was actually called during THIS question, so
+    # we can guarantee the "unverified answer" disclosure ourselves in code
+    # — rather than relying on the model to remember to add it every time,
+    # which a free-tier model won't always do reliably.
+    tool_used_this_turn = False
+
     for turn in range(max_turns):
         # Free-tier models share a limited request pool across everyone
         # using OpenRouter at once, so occasional rate-limit errors are
@@ -365,13 +371,30 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                     "The agent didn't return a usable answer this time — please try asking again.",
                     messages,
                 )
-            return message.content, messages
+
+            answer = message.content
+
+            # Guarantee the unverified-answer disclosure in CODE, not just
+            # by asking the model nicely — a free-tier model won't always
+            # remember to add it, and this matters too much for trust to
+            # leave to chance. Only add it if no tool was used this turn
+            # and the model hasn't already included an equivalent note.
+            if not tool_used_this_turn and "not verified" not in answer.lower() and "not been verified" not in answer.lower():
+                answer += (
+                    "\n\n---\n*Note: this answer was not verified against a live source "
+                    "or the ingested government documents — it comes from the model's "
+                    "general knowledge. Ask me to look up research papers, drug safety "
+                    "data, or government guidance for a sourced answer.*"
+                )
+
+            return answer, messages
 
         for tool_call in message.tool_calls:
             name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
             print(f"  [Agent is calling tool: {name}  with args: {args}]")
 
+            tool_used_this_turn = True
             result = call_tool(name, args)
 
             messages.append({
