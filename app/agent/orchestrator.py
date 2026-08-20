@@ -253,6 +253,23 @@ def call_tool(name: str, args: dict):
 # STEP 3: The orchestration loop itself.
 # ---------------------------------------------------------------------------
 
+def is_garbage_output(text: str) -> bool:
+    """
+    Detects degenerate output — a free-tier model occasionally gets stuck
+    repeating the same character or token over and over instead of giving
+    a real answer (e.g. hundreds of '!' characters). A real answer, even
+    a short one, uses a healthy variety of characters; a stuck repetition
+    loop does not.
+    """
+    if not text:
+        return False
+    stripped = text.strip()
+    if len(stripped) < 40:
+        return False
+    unique_chars = set(stripped.replace(" ", "").replace("\n", ""))
+    return len(unique_chars) <= 4
+
+
 def run_agent(user_question: str, conversation_history: list = None, max_turns: int = 5):
     """
     Runs the agent loop for one question.
@@ -312,11 +329,13 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
         message = response.choices[0].message
 
-        # Free-tier models occasionally return a completely empty response
-        # (no tool call AND no text) under load. Rather than give up
-        # immediately, retry the same turn a couple of times first.
-        if not message.tool_calls and not message.content:
-            print("  [Empty response from model, retrying...]")
+        # Free-tier models occasionally return a completely empty response,
+        # or get stuck in a degenerate repetition loop (e.g. hundreds of
+        # the same character), under load. Rather than give up immediately,
+        # retry the same turn a couple of times first.
+        needs_retry = not message.tool_calls and (not message.content or is_garbage_output(message.content))
+        if needs_retry:
+            print("  [Empty or garbage response from model, retrying...]")
             retried = False
             for _ in range(2):
                 time.sleep(3)
@@ -327,7 +346,7 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                     max_tokens=800,
                 )
                 message = retry_response.choices[0].message
-                if message.tool_calls or message.content:
+                if message.tool_calls or (message.content and not is_garbage_output(message.content)):
                     retried = True
                     break
             if not retried:
