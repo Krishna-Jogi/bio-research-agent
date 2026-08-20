@@ -174,4 +174,21 @@ if __name__ == "__main__":
         },
     ]
 
-    ingest_documents(pharmacovigilance_docs)
+    nutraceuticals_docs = [
+        {
+            "url": "https://fssai.gov.in/upload/uploadfiles/files/Compendium_Nutra_29_09_2021.pdf",
+            "domain": "nutraceuticals",
+            "title": "FSSAI Health Supplements, Nutraceuticals, and Novel Food Regulations, 2016",
+        },
+    ]
+
+    water_docs = [
+        {
+            "url": "https://cdn.who.int/media/docs/default-source/medicines/norms-and-standards/guidelines/inspections/trs1033-annex3-gmp-water-for-pharmaceuticals-use.pdf?sfvrsn=aaa46ae5_4&download=true",
+            "domain": "water",
+            "title": "WHO Good Manufacturing Practices: Water for Pharmaceutical Use (TRS 1033, Annex 3)",
+        },
+    ]
+
+    all_docs = pharmacovigilance_docs + nutraceuticals_docs + water_docs
+    ingest_documents(all_docs)
