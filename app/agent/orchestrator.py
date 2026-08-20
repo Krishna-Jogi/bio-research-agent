@@ -204,11 +204,16 @@ TOOLS = [
                         "type": "string",
                         "enum": ["pharmacovigilance", "nutraceuticals", "water"],
                         "description": (
-                            "Restrict the search to one domain. Currently ingested: "
-                            "'pharmacovigilance' (ADR reporting, ICSRs), "
-                            "'nutraceuticals' (FSSAI health supplement regulations), "
-                            "'water' (WHO pharmaceutical water quality/GMP). "
-                            "Omit only if the question doesn't clearly fit one of these."
+                            "Pick the domain that matches the question's TOPIC, not habit — "
+                            "check this list carefully every time: "
+                            "'pharmacovigilance' = adverse drug reactions (ADR), ICSRs, "
+                            "safety reporting, PSUR. "
+                            "'nutraceuticals' = health supplements, functional foods, FSSAI "
+                            "food regulations, nutrient/vitamin/mineral limits. "
+                            "'water' = water quality, water for injection (WFI), purified "
+                            "water, water systems, water testing/GMP. "
+                            "If genuinely uncertain which domain fits, OMIT this parameter "
+                            "entirely to search across all domains — do not guess."
                         ),
                     },
                 },
