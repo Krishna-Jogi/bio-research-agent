@@ -41,7 +41,8 @@ if not api_key:
 
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
-MODEL = "openai/gpt-oss-20b:free"  # free tier, confirmed working in test_connection.py
+MODEL = "openai/gpt-oss-20b:free"  # primary — confirmed working in test_connection.py
+FALLBACK_MODEL = "openrouter/free"  # auto-router — tried if the primary model keeps failing
 
 # This instruction is sent as a "system" message — a special message role
 # that sets ground rules for how the model should behave, separate from
@@ -275,6 +276,52 @@ def is_garbage_output(text: str) -> bool:
     return len(unique_chars) <= 4
 
 
+def get_agent_response(messages: list, models=(MODEL, FALLBACK_MODEL), attempts_per_model: int = 2):
+    """
+    Requests a completion, trying each model in `models` in order. For
+    each model, retries a couple of times if it hits a rate limit, an
+    empty response, or garbage output — all known free-tier quirks.
+    Only moves to the next model in the list once the current one has
+    genuinely failed multiple times, not on the first hiccup.
+
+    Returns (message, model_used) on success, or (None, None) if every
+    model in the list failed.
+    """
+    for model_name in models:
+        for attempt in range(attempts_per_model):
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    tools=TOOLS,
+                    max_tokens=800,
+                )
+            except RateLimitError:
+                print(f"  [{model_name} rate-limited, waiting 20s (attempt {attempt + 1}/{attempts_per_model})...]")
+                time.sleep(20)
+                continue
+            except Exception as e:
+                print(f"  [{model_name} request failed: {e}]")
+                time.sleep(3)
+                continue
+
+            if not response.choices:
+                print(f"  [{model_name} returned no choices, retrying...]")
+                continue
+
+            message = response.choices[0].message
+
+            if message.tool_calls or (message.content and not is_garbage_output(message.content)):
+                return message, model_name
+
+            print(f"  [{model_name} returned empty/garbage output, retrying...]")
+            time.sleep(3)
+
+        print(f"  [{model_name} failed after {attempts_per_model} attempts — trying next model if available]")
+
+    return None, None
+
+
 def run_agent(user_question: str, conversation_history: list = None, max_turns: int = 5):
     """
     Runs the agent loop for one question.
@@ -308,64 +355,15 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
     tool_used_this_turn = False
 
     for turn in range(max_turns):
-        # Free-tier models share a limited request pool across everyone
-        # using OpenRouter at once, so occasional rate-limit errors are
-        # expected, not a sign anything is broken. We retry a few times
-        # with a short wait, rather than failing the whole conversation
-        # over a temporary, shared-resource hiccup.
-        response = None
-        last_error = None
-        for attempt in range(4):
-            try:
-                response = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=TOOLS,
-                    max_tokens=800,
-                )
-                break
-            except RateLimitError as e:
-                last_error = e
-                wait_seconds = 25
-                print(f"  [Rate-limited, waiting {wait_seconds}s before retry {attempt + 1}/4...]")
-                time.sleep(wait_seconds)
+        message, model_used = get_agent_response(messages)
 
-        if response is None:
-            return f"The free model is currently rate-limited and retries were exhausted. Try again in a minute. ({last_error})", messages
-
-        if not response.choices:
-            # Occasionally the free tier returns a technically-successful
-            # response with no usable content at all (malformed under load).
-            return "The free model returned an unusable response. Please try asking again.", messages
-
-        message = response.choices[0].message
-
-        # Free-tier models occasionally return a completely empty response,
-        # or get stuck in a degenerate repetition loop (e.g. hundreds of
-        # the same character), under load. Rather than give up immediately,
-        # retry the same turn a couple of times first.
-        needs_retry = not message.tool_calls and (not message.content or is_garbage_output(message.content))
-        if needs_retry:
-            print("  [Empty or garbage response from model, retrying...]")
-            retried = False
-            for _ in range(2):
-                time.sleep(3)
-                retry_response = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=TOOLS,
-                    max_tokens=800,
-                )
-                message = retry_response.choices[0].message
-                if message.tool_calls or (message.content and not is_garbage_output(message.content)):
-                    retried = True
-                    break
-            if not retried:
-                return (
-                    "The agent didn't return a usable answer after retrying — this can happen "
-                    "occasionally with the free model under high load. Please try asking again.",
-                    messages,
-                )
+        if message is None:
+            return (
+                "The agent couldn't get a usable response from either the primary or backup "
+                "free model right now — this happens occasionally under high load. "
+                "Please try again shortly.",
+                messages,
+            )
 
         messages.append(message.model_dump())
 
