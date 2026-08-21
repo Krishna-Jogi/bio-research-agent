@@ -50,8 +50,27 @@ collection = chroma_client.get_or_create_collection(COLLECTION_NAME)
 
 def download_pdf_text(url: str) -> str:
     """Downloads a PDF from a URL and extracts its raw text."""
-    response = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/pdf,application/octet-stream,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    response = requests.get(url, timeout=30, headers=headers)
     response.raise_for_status()
+
+    # Some government servers return an HTML error/redirect page instead
+    # of the actual PDF when a request doesn't look enough like a real
+    # browser — this check catches that clearly instead of letting the
+    # PDF parser fail with a confusing low-level error.
+    if not response.content.startswith(b"%PDF"):
+        preview = response.content[:200]
+        raise ValueError(
+            f"Response is not a PDF (got {response.headers.get('Content-Type', 'unknown type')}). "
+            f"First bytes: {preview}"
+        )
 
     reader = PdfReader(io.BytesIO(response.content))
     text_parts = []
@@ -176,9 +195,9 @@ if __name__ == "__main__":
 
     nutraceuticals_docs = [
         {
-            "url": "https://fssai.gov.in/upload/uploadfiles/files/Compendium_Nutra_29_09_2021.pdf",
+            "url": "https://faolex.fao.org/docs/pdf/ind168163.pdf",
             "domain": "nutraceuticals",
-            "title": "FSSAI Health Supplements, Nutraceuticals, and Novel Food Regulations, 2016",
+            "title": "FSSAI Health Supplements, Nutraceuticals, and Novel Food Regulations, 2016 (FAO Legal Database mirror)",
         },
     ]
 

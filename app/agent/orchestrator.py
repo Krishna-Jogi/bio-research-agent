@@ -349,10 +349,34 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
     messages.append({"role": "user", "content": user_question})
 
     # Track whether any tool was actually called during THIS question, so
-    # we can guarantee the "unverified answer" disclosure ourselves in code
-    # — rather than relying on the model to remember to add it every time,
-    # which a free-tier model won't always do reliably.
+    # we can guarantee the "unverified answer" disclosure ourselves in code.
     tool_used_this_turn = False
+
+    # Track the REAL sources returned by tools during this turn — not what
+    # the model claims it cited, but the actual title/URL pairs the tools
+    # gave back. We use this to append a guaranteed-correct source list in
+    # code, rather than trusting the model to accurately transcribe a URL
+    # into its prose (which, as observed, it doesn't always do correctly).
+    verified_sources = []  # list of (title, url) tuples, deduplicated
+
+    def track_sources(tool_name: str, result):
+        if tool_name == "search_research_papers" and isinstance(result, list):
+            for paper in result:
+                title = paper.get("title")
+                link = paper.get("link")
+                if title and link:
+                    entry = (title, link)
+                    if entry not in verified_sources:
+                        verified_sources.append(entry)
+
+        if tool_name == "search_government_documents" and isinstance(result, dict):
+            for r in result.get("results", []):
+                title = r.get("title")
+                url = r.get("source_url")
+                if title and url:
+                    entry = (title, url)
+                    if entry not in verified_sources:
+                        verified_sources.append(entry)
 
     for turn in range(max_turns):
         message, model_used = get_agent_response(messages)
@@ -390,6 +414,17 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                     "data, or government guidance for a sourced answer.*"
                 )
 
+            # Append a code-guaranteed, verified source list — this is
+            # ALWAYS accurate, regardless of whether the model correctly
+            # copied links into its own prose. If it duplicates a link
+            # the model already cited correctly, that's harmless; if the
+            # model cited something wrong or generic, this is the
+            # trustworthy version.
+            if verified_sources:
+                answer += "\n\n**Verified sources consulted:**\n"
+                for title, url in verified_sources:
+                    answer += f"- {title}: {url}\n"
+
             return answer, messages
 
         for tool_call in message.tool_calls:
@@ -399,6 +434,7 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
             tool_used_this_turn = True
             result = call_tool(name, args)
+            track_sources(name, result)
 
             messages.append({
                 "role": "tool",
