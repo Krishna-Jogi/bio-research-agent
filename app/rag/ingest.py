@@ -209,5 +209,13 @@ if __name__ == "__main__":
         },
     ]
 
-    all_docs = pharmacovigilance_docs + nutraceuticals_docs + water_docs
+    environment_docs = [
+        {
+            "url": "https://cpcb.nic.in/uploads/Industry-Specific-Standards/Effluent/73-pharmaceuticals.pdf",
+            "domain": "environment",
+            "title": "CPCB Pharmaceutical Industry Effluent and Emission Standards (Gazette Notification, 2021)",
+        },
+    ]
+
+    all_docs = pharmacovigilance_docs + nutraceuticals_docs + water_docs + environment_docs
     ingest_documents(all_docs)

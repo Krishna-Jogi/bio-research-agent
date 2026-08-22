@@ -203,7 +203,7 @@ TOOLS = [
                     },
                     "domain": {
                         "type": "string",
-                        "enum": ["pharmacovigilance", "nutraceuticals", "water"],
+                        "enum": ["pharmacovigilance", "nutraceuticals", "water", "environment"],
                         "description": (
                             "Pick the domain that matches the question's TOPIC, not habit — "
                             "check this list carefully every time: "
@@ -213,6 +213,8 @@ TOOLS = [
                             "food regulations, nutrient/vitamin/mineral limits. "
                             "'water' = water quality, water for injection (WFI), purified "
                             "water, water systems, water testing/GMP. "
+                            "'environment' = pharmaceutical effluent/emission standards, "
+                            "waste disposal, pollution limits, hazardous waste. "
                             "If genuinely uncertain which domain fits, OMIT this parameter "
                             "entirely to search across all domains — do not guess."
                         ),
