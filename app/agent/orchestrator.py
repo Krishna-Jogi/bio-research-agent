@@ -203,7 +203,7 @@ TOOLS = [
                     },
                     "domain": {
                         "type": "string",
-                        "enum": ["pharmacovigilance", "nutraceuticals", "water", "environment"],
+                        "enum": ["pharmacovigilance", "nutraceuticals", "water", "environment", "chemical_engineering", "ptc"],
                         "description": (
                             "Pick the domain that matches the question's TOPIC, not habit — "
                             "check this list carefully every time: "
@@ -215,6 +215,11 @@ TOOLS = [
                             "water, water systems, water testing/GMP. "
                             "'environment' = pharmaceutical effluent/emission standards, "
                             "waste disposal, pollution limits, hazardous waste. "
+                            "'chemical_engineering' = pharmaceutical process/manufacturing "
+                            "development, Quality by Design (QbD), critical quality attributes, "
+                            "design space, process parameters, ICH Q8. "
+                            "'ptc' = Plant Tissue Culture — biosafety for transgenic plants, "
+                            "plant/cell culture containment, DBT biosafety levels for plant work. "
                             "If genuinely uncertain which domain fits, OMIT this parameter "
                             "entirely to search across all domains — do not guess."
                         ),

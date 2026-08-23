@@ -217,5 +217,28 @@ if __name__ == "__main__":
         },
     ]
 
-    all_docs = pharmacovigilance_docs + nutraceuticals_docs + water_docs + environment_docs
+    chemical_engineering_docs = [
+        {
+            "url": "https://database.ich.org/sites/default/files/Q8_R2_Guideline.pdf",
+            "domain": "chemical_engineering",
+            "title": "ICH Q8(R2): Pharmaceutical Development (Quality by Design, Critical Quality Attributes, Process Design Space)",
+        },
+    ]
+
+    ptc_docs = [
+        {
+            "url": "https://thsti.res.in/pdf/THSTI-BSG.pdf",
+            "domain": "ptc",
+            "title": "THSTI Biosafety Guidelines (DBT biosafety framework covering transgenic plants and plant tissue/cell culture)",
+        },
+    ]
+
+    all_docs = (
+        pharmacovigilance_docs
+        + nutraceuticals_docs
+        + water_docs
+        + environment_docs
+        + chemical_engineering_docs
+        + ptc_docs
+    )
     ingest_documents(all_docs)
