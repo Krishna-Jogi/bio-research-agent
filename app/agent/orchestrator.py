@@ -283,6 +283,25 @@ def is_garbage_output(text: str) -> bool:
     return len(unique_chars) <= 4
 
 
+# Phrases that reliably show up when a reasoning model's internal
+# chain-of-thought leaks into what should be the final answer, instead of
+# staying hidden. This is a narrow, defense-in-depth check — the real fix
+# is asking OpenRouter to exclude reasoning tokens — but this catches it
+# if that doesn't fully work for a given model.
+_REASONING_LEAK_MARKERS = (
+    "the user asks",
+    "we need to provide",
+    "thus we need to",
+    "let's provide",
+    "potential answer:",
+)
+
+
+def looks_like_leaked_reasoning(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _REASONING_LEAK_MARKERS)
+
+
 def get_agent_response(messages: list, models=(MODEL, FALLBACK_MODEL), attempts_per_model: int = 2):
     """
     Requests a completion, trying each model in `models` in order. For
@@ -301,7 +320,16 @@ def get_agent_response(messages: list, models=(MODEL, FALLBACK_MODEL), attempts_
                     model=model_name,
                     messages=messages,
                     tools=TOOLS,
-                    max_tokens=800,
+                    max_tokens=1200,
+                    # gpt-oss-20b is a reasoning model — without this, it can
+                    # spend its whole token budget "thinking out loud" (e.g.
+                    # "The user asks... Thus we need to...") as if it were
+                    # the actual answer, sometimes leaking that reasoning
+                    # into the visible response and running out of room
+                    # before writing the real answer. This tells OpenRouter
+                    # to keep reasoning internal and only return the final
+                    # answer text.
+                    extra_body={"reasoning": {"exclude": True}},
                 )
             except RateLimitError:
                 print(f"  [{model_name} rate-limited, waiting 20s (attempt {attempt + 1}/{attempts_per_model})...]")
@@ -317,6 +345,16 @@ def get_agent_response(messages: list, models=(MODEL, FALLBACK_MODEL), attempts_
                 continue
 
             message = response.choices[0].message
+
+            # Defense in depth: even with reasoning excluded, occasionally
+            # a leaked chain-of-thought preamble can still slip through
+            # (e.g. "The user asks...", "Thus we need to..."). Treat this
+            # the same as garbage output and retry, rather than showing a
+            # confusing internal monologue to the person asking a question.
+            if message.content and looks_like_leaked_reasoning(message.content):
+                print(f"  [{model_name} leaked internal reasoning instead of an answer, retrying...]")
+                time.sleep(3)
+                continue
 
             if message.tool_calls or (message.content and not is_garbage_output(message.content)):
                 return message, model_name
