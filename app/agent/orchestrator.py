@@ -41,8 +41,18 @@ if not api_key:
 
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
-MODEL = "openai/gpt-oss-20b:free"  # primary — confirmed working in test_connection.py
-FALLBACK_MODEL = "openrouter/free"  # auto-router — tried if the primary model keeps failing
+MODEL = "openrouter/free"  # primary — an auto-router that picks from
+# whichever free models are currently live and support tool calling.
+# Switched to this as primary after TWO different named free models
+# (gpt-oss-20b:free, then llama-3.3-70b-instruct:free) were silently
+# retired by OpenRouter mid-project. A specific model name is not a
+# stable thing to depend on for a free-tier project — this auto-router
+# is maintained by OpenRouter itself, so it adapts as models are
+# added/removed without needing a code change here.
+FALLBACK_MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # secondary —
+# tried only if the primary somehow fails outright. Nice to have for
+# slightly more predictable behavior when it happens to work, but the
+# project no longer depends on it staying available.
 
 # This instruction is sent as a "system" message — a special message role
 # that sets ground rules for how the model should behave, separate from
@@ -336,6 +346,15 @@ def get_agent_response(messages: list, models=(MODEL, FALLBACK_MODEL), attempts_
                 time.sleep(20)
                 continue
             except Exception as e:
+                # A 404 here means the model itself is gone/renamed (as
+                # happened when OpenRouter retired gpt-oss-20b:free) — no
+                # amount of retrying will fix that, so don't waste time
+                # sleeping and trying again; move straight to the next
+                # model in the list.
+                error_text = str(e)
+                if "404" in error_text or "no longer" in error_text.lower() or "unavailable" in error_text.lower():
+                    print(f"  [{model_name} appears to be permanently unavailable: {e}]")
+                    break
                 print(f"  [{model_name} request failed: {e}]")
                 time.sleep(3)
                 continue
@@ -424,7 +443,9 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                         verified_sources.append(entry)
 
     for turn in range(max_turns):
+        turn_start = time.time()
         message, model_used = get_agent_response(messages)
+        print(f"  [Turn {turn + 1}: model call took {time.time() - turn_start:.1f}s, used {model_used}]")
 
         if message is None:
             return (
@@ -477,8 +498,10 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
             args = json.loads(tool_call.function.arguments)
             print(f"  [Agent is calling tool: {name}  with args: {args}]")
 
+            tool_start = time.time()
             tool_used_this_turn = True
             result = call_tool(name, args)
+            print(f"  [Tool {name} took {time.time() - tool_start:.1f}s]")
             track_sources(name, result)
 
             messages.append({
