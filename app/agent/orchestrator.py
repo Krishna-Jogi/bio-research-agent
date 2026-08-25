@@ -227,8 +227,11 @@ TOOLS = [
                             "'chemical_engineering' = pharmaceutical process/manufacturing "
                             "development, Quality by Design (QbD), critical quality attributes, "
                             "design space, process parameters, ICH Q8. "
-                            "'ptc' = Plant Tissue Culture — biosafety for transgenic plants, "
-                            "plant/cell culture containment, DBT biosafety levels for plant work. "
+                            "'ptc' = Plant Tissue Culture — covers biosafety broadly: "
+                            "transgenic plants, plant/cell culture containment, DBT biosafety "
+                            "levels, AND general laboratory biosafety topics like accidental "
+                            "exposure, spills, emergency procedures, and PPE for any "
+                            "infectious/biological material (not just plant-specific incidents). "
                             "If genuinely uncertain which domain fits, OMIT this parameter "
                             "entirely to search across all domains — do not guess."
                         ),
@@ -434,6 +437,15 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
     domain_call_counts = {}
     MAX_CALLS_PER_DOMAIN = 2
 
+    # Separately, cap the TOTAL number of government-document searches per
+    # question, regardless of domain. Without this, a model that picks the
+    # wrong domain can wander across several different wrong domains (2
+    # attempts each) before ever trying the right one or giving up —
+    # burning most of the turn budget on searches that were never going
+    # to find the answer.
+    total_govt_search_count = 0
+    MAX_TOTAL_GOVT_SEARCHES = 4
+
     # Track whether any tool was actually called during THIS question, so
     # we can guarantee the "unverified answer" disclosure ourselves in code.
     tool_used_this_turn = False
@@ -567,6 +579,28 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
             if name == "search_government_documents":
                 domain = args.get("domain", "_any_")
                 domain_call_counts[domain] = domain_call_counts.get(domain, 0) + 1
+                total_govt_search_count += 1
+
+                if total_govt_search_count > MAX_TOTAL_GOVT_SEARCHES:
+                    print(f"  [Blocking further searches — already made {MAX_TOTAL_GOVT_SEARCHES} government-document searches this question]")
+                    result = {
+                        "found": False,
+                        "results": [],
+                        "note": (
+                            "You have made several searches across different domains for "
+                            "this question without finding a clear answer. Stop searching "
+                            "and answer now with what you've found. If none of the domains "
+                            "you tried covered this topic, say so honestly rather than "
+                            "searching further."
+                        ),
+                    }
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result, default=str),
+                    })
+                    continue
+
                 if domain_call_counts[domain] > MAX_CALLS_PER_DOMAIN:
                     print(f"  [Blocking repeated search of domain '{domain}' — already tried {MAX_CALLS_PER_DOMAIN} times]")
                     result = {
