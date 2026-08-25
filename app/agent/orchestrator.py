@@ -412,6 +412,16 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
 
     messages.append({"role": "user", "content": user_question})
 
+    # Track how many times search_government_documents has been called for
+    # each domain THIS question. Left unchecked, a free-tier model will
+    # sometimes keep re-querying the same domain with slightly reworded
+    # phrasing over and over — especially when the real answer just isn't
+    # in the ingested document — burning the whole turn budget without
+    # ever producing an answer. The system prompt already asks it not to
+    # do this, but that isn't reliably followed, so it's enforced here.
+    domain_call_counts = {}
+    MAX_CALLS_PER_DOMAIN = 2
+
     # Track whether any tool was actually called during THIS question, so
     # we can guarantee the "unverified answer" disclosure ourselves in code.
     tool_used_this_turn = False
@@ -421,19 +431,34 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
     # gave back. We use this to append a guaranteed-correct source list in
     # code, rather than trusting the model to accurately transcribe a URL
     # into its prose (which, as observed, it doesn't always do correctly).
-    verified_sources = []  # list of (title, url) tuples, deduplicated
+    verified_sources = []  # government-document sources — always shown,
+    # since these are already scoped to the right domain and are the
+    # trust-critical grounding for regulatory/document-based answers.
+
+    research_candidates = []  # research-paper sources — shown either when
+    # research search was the only tool used this turn (a genuine "find
+    # papers on X" question, where all results are legitimately relevant),
+    # or filtered to only the ones the model actually referenced in its
+    # answer. This exists because a model chasing a document-based question
+    # can go on a tangent and call the research tool too, get back mostly
+    # irrelevant matches, correctly ignore them in its answer — but without
+    # this filter they'd still get listed as if they were used.
+
+    govt_domain_used_this_turn = False
 
     def track_sources(tool_name: str, result):
+        nonlocal govt_domain_used_this_turn
         if tool_name == "search_research_papers" and isinstance(result, list):
             for paper in result:
                 title = paper.get("title")
                 link = paper.get("link")
                 if title and link:
                     entry = (title, link)
-                    if entry not in verified_sources:
-                        verified_sources.append(entry)
+                    if entry not in research_candidates:
+                        research_candidates.append(entry)
 
         if tool_name == "search_government_documents" and isinstance(result, dict):
+            govt_domain_used_this_turn = True
             for r in result.get("results", []):
                 title = r.get("title")
                 url = r.get("source_url")
@@ -486,9 +511,30 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
             # the model already cited correctly, that's harmless; if the
             # model cited something wrong or generic, this is the
             # trustworthy version.
-            if verified_sources:
+            #
+            # Government-document sources are always shown — they're
+            # already scoped to the right domain. Research-paper sources
+            # are only shown if research search was the sole tool used
+            # (a genuine "find papers on X" question, where every result
+            # is legitimately relevant), OR if the model actually referenced
+            # that specific paper in its own answer text — this filters out
+            # tangential/irrelevant lookups the model correctly ignored.
+            relevant_research = []
+            if research_candidates:
+                if not govt_domain_used_this_turn:
+                    relevant_research = research_candidates
+                else:
+                    answer_lower = answer.lower()
+                    for title, link in research_candidates:
+                        title_words = [w for w in title.lower().split() if len(w) > 4]
+                        title_mentioned = title_words and sum(w in answer_lower for w in title_words) >= max(2, len(title_words) // 2)
+                        if link in answer or title_mentioned:
+                            relevant_research.append((title, link))
+
+            all_sources = verified_sources + relevant_research
+            if all_sources:
                 answer += "\n\n**Verified sources consulted:**\n"
-                for title, url in verified_sources:
+                for title, url in all_sources:
                     answer += f"- {title}: {url}\n"
 
             return answer, messages
@@ -498,8 +544,37 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
             args = json.loads(tool_call.function.arguments)
             print(f"  [Agent is calling tool: {name}  with args: {args}]")
 
-            tool_start = time.time()
             tool_used_this_turn = True
+
+            # Enforce the "don't keep re-searching the same domain" rule
+            # in code, since the model doesn't reliably follow it on its
+            # own. After a couple of real attempts, stop actually running
+            # the search and instead tell the model directly to stop
+            # looking and answer with what it already has — disclosing
+            # honestly if that's not quite enough to fully answer.
+            if name == "search_government_documents":
+                domain = args.get("domain", "_any_")
+                domain_call_counts[domain] = domain_call_counts.get(domain, 0) + 1
+                if domain_call_counts[domain] > MAX_CALLS_PER_DOMAIN:
+                    print(f"  [Blocking repeated search of domain '{domain}' — already tried {MAX_CALLS_PER_DOMAIN} times]")
+                    result = {
+                        "found": False,
+                        "results": [],
+                        "note": (
+                            "You have already searched this domain multiple times for this "
+                            "question. Stop searching and answer now using what you've already "
+                            "found. If the ingested documents genuinely don't contain this "
+                            "specific detail, say so plainly rather than searching again."
+                        ),
+                    }
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result, default=str),
+                    })
+                    continue
+
+            tool_start = time.time()
             result = call_tool(name, args)
             print(f"  [Tool {name} took {time.time() - tool_start:.1f}s]")
             track_sources(name, result)
@@ -510,7 +585,13 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                 "content": json.dumps(result, default=str),
             })
 
-    return "The agent couldn't reach a final answer within the turn limit.", messages
+    return (
+        "I wasn't able to settle on a complete answer for this within the allowed "
+        "number of search attempts. This can happen when the specific detail you're "
+        "asking about isn't fully covered in the ingested documents. Try rephrasing "
+        "your question, or ask about a related topic that might be better covered.",
+        messages,
+    )
 
 
 if __name__ == "__main__":
