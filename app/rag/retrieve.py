@@ -6,8 +6,6 @@ from the government documents we ingested — this becomes a fourth
 tool for the agent, alongside research search, pharmacovigilance
 search, and the math engine.
 
-Run this directly with: python -m app.rag.retrieve
-(runs a couple of test queries against whatever has been ingested)
 """
 
 import chromadb

@@ -6,12 +6,6 @@ a website, app, or any other program can send it a question over the
 internet and get an answer back — instead of only running via a Python
 script in the terminal.
 
-Run this with: uvicorn app.main:app --reload
-(run from the project root — the folder containing "app")
-
-Then test it by opening http://127.0.0.1:8000/docs in a browser —
-FastAPI auto-generates an interactive page where you can try the
-/chat endpoint directly, no separate frontend needed yet.
 """
 
 from datetime import date

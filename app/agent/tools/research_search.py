@@ -37,10 +37,20 @@ def search_papers(query: str, max_results: int = 5) -> list[dict]:
         "resultType": "core",  # gives us abstract text, not just metadata
     }
 
-    response = requests.get(EUROPE_PMC_URL, params=params, timeout=10)
-    response.raise_for_status()  # raises an error if the request failed
+    # A network hiccup here (timeout, DNS issue, Europe PMC being briefly
+    # down) shouldn't crash the whole question — that wastes the person's
+    # turn and shows a generic "something went wrong" error even when
+    # other tools in the same turn found something useful. Instead, fail
+    # gracefully and let the agent explain research search wasn't
+    # available, same as it already does for "no results found".
+    try:
+        response = requests.get(EUROPE_PMC_URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"  [Europe PMC search failed: {e}]")
+        return []
 
-    data = response.json()
     results = data.get("resultList", {}).get("result", [])
 
     papers = []

@@ -21,8 +21,6 @@ QUESTION into numbers the same way, then asks Chroma "which stored
 chunks have embeddings closest to this question's embedding?" — that's
 how it finds relevant content by meaning, not just keyword matching.
 
-Run this with: python -m app.rag.ingest
-(run from the project root)
 """
 
 import hashlib

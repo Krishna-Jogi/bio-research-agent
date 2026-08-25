@@ -14,8 +14,7 @@ This is called "tool calling" or "function calling." The LLM never
 executes code itself — it only ever REQUESTS a tool by name with
 arguments; our code is what actually runs it.
 
-Run this with: python app/agent/orchestrator.py
-(run from the project root, so the .env file is found correctly)
+
 """
 
 import os
@@ -301,9 +300,22 @@ def is_garbage_output(text: str) -> bool:
 _REASONING_LEAK_MARKERS = (
     "the user asks",
     "we need to provide",
+    "we need to answer",
     "thus we need to",
     "let's provide",
+    "let's search",
+    "let's extract",
+    "let's answer",
     "potential answer:",
+    "the rule says",
+    "we cannot call",
+    "we should present",
+    "we have fetched",
+    "must answer based on",
+    "call the tool again",
+    "reworded query",
+    "search_government_documents",
+    "search_research_papers",
 )
 
 

@@ -1,14 +1,4 @@
-"""
-Quick pre-demo health check.
 
-Run this before any presentation or demo to confirm the LLM connection
-is actually working RIGHT NOW, rather than finding out live in front of
-people — free-tier models can be silently retired or rate-limited at
-any moment, so this takes 10 seconds and catches that in advance.
-
-Usage:
-    python -m app.health_check
-"""
 import os
 import sys
 import time
