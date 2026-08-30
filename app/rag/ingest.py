@@ -10,17 +10,17 @@ The process, step by step:
   3. Split ("chunk") that text into small overlapping pieces — small
      enough that each chunk is specific, with overlap so we don't cut
      a sentence's meaning in half at a chunk boundary
-  4. Convert each chunk into an "embedding" — a list of numbers that
-     represents the chunk's MEANING, using a free, local model
-     (nothing sent to any API for this step — it runs on your machine)
-  5. Store the chunk text + its embedding + where it came from (source
-     URL, domain, title) in Chroma, a local vector database
+  4. Store each chunk in Chroma, a local vector database. Chroma embeds
+     the text itself (turning it into numbers representing its meaning)
+     using its built-in ONNX-based model — this used to be done manually
+     with sentence-transformers/PyTorch, but that combination caused
+     out-of-memory crashes on Render's free tier (512MB); ONNX Runtime
+     runs the same underlying model with a much smaller memory footprint.
 
-Later, retrieve.py uses the same embedding model to turn a student's
+Later, retrieve.py uses the SAME embedding function to turn a student's
 QUESTION into numbers the same way, then asks Chroma "which stored
 chunks have embeddings closest to this question's embedding?" — that's
 how it finds relevant content by meaning, not just keyword matching.
-
 """
 
 import hashlib
@@ -28,22 +28,24 @@ import io
 
 import chromadb
 import requests
+from chromadb.utils import embedding_functions
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
 
 CHROMA_PATH = "app/rag/chroma_db"
 COLLECTION_NAME = "govt_sources"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"  # small, fast, free, runs locally
 
 CHUNK_SIZE_WORDS = 350
 CHUNK_OVERLAP_WORDS = 50
 
 
-print("Loading embedding model (first run downloads it, ~90MB, one-time)...")
-embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+print("Setting up vector database (ONNX embedding — lightweight, no PyTorch needed)...")
+_embedding_function = embedding_functions.ONNXMiniLM_L6_V2()
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-collection = chroma_client.get_or_create_collection(COLLECTION_NAME)
+collection = chroma_client.get_or_create_collection(
+    COLLECTION_NAME,
+    embedding_function=_embedding_function,
+)
 
 
 def download_pdf_text(url: str) -> str:
@@ -113,7 +115,8 @@ def make_chunk_id(url: str, chunk_index: int) -> str:
 
 def ingest_document(url: str, domain: str, title: str):
     """
-    Downloads, chunks, embeds, and stores one document.
+    Downloads, chunks, and stores one document. Chroma handles embedding
+    automatically using the collection's attached embedding function.
 
     Args:
         url: direct PDF URL
@@ -139,16 +142,16 @@ def ingest_document(url: str, domain: str, title: str):
     if not chunks:
         return 0
 
-    embeddings = embedding_model.encode(chunks).tolist()
     ids = [make_chunk_id(url, i) for i in range(len(chunks))]
     metadatas = [
         {"source_url": url, "domain": domain, "title": title, "chunk_index": i}
         for i in range(len(chunks))
     ]
 
+    # No embeddings passed explicitly — Chroma computes them itself using
+    # the collection's attached ONNX embedding function.
     collection.upsert(
         ids=ids,
-        embeddings=embeddings,
         documents=chunks,
         metadatas=metadatas,
     )
@@ -172,7 +175,6 @@ def ingest_documents(document_list: list[dict]):
 
 
 if __name__ == "__main__":
-    # Test batch: the 3 confirmed-working Pharmacovigilance PDFs from IPC/PvPI
     pharmacovigilance_docs = [
         {
             "url": "https://ipc.gov.in/images/Version_1.0.pdf",

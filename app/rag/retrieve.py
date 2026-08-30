@@ -5,34 +5,33 @@ Purpose: given a student's question, find the most relevant chunks
 from the government documents we ingested — this becomes a fourth
 tool for the agent, alongside research search, pharmacovigilance
 search, and the math engine.
-
 """
 
 import chromadb
-from sentence_transformers import SentenceTransformer
+from chromadb.utils import embedding_functions
 
 CHROMA_PATH = "app/rag/chroma_db"
 COLLECTION_NAME = "govt_sources"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
-# Loaded once, reused for every call — loading the model is the slow part,
-# so we don't want to repeat it per question.
-_embedding_model = None
+# Uses ChromaDB's built-in embedding function, which runs the same
+# all-MiniLM-L6-v2 model via ONNX Runtime instead of full PyTorch.
+# Switched from sentence-transformers/PyTorch after that combination
+# caused out-of-memory crashes on Render's free tier (512MB) — ONNX
+# Runtime has a much smaller memory footprint for the same model, since
+# it avoids loading all of PyTorch just to run one small model.
+_embedding_function = embedding_functions.ONNXMiniLM_L6_V2()
+
 _collection = None
-
-
-def _get_model():
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _embedding_model
 
 
 def _get_collection():
     global _collection
     if _collection is None:
         client = chromadb.PersistentClient(path=CHROMA_PATH)
-        _collection = client.get_or_create_collection(COLLECTION_NAME)
+        _collection = client.get_or_create_collection(
+            COLLECTION_NAME,
+            embedding_function=_embedding_function,
+        )
     return _collection
 
 
@@ -51,15 +50,14 @@ def search_government_sources(query: str, domain: str = None, n_results: int = 4
         its source title, source URL, and domain, so the agent can cite
         exactly where the information came from.
     """
-    model = _get_model()
     collection = _get_collection()
-
-    query_embedding = model.encode([query]).tolist()
 
     where_filter = {"domain": domain} if domain else None
 
+    # query_texts (not query_embeddings) — Chroma embeds the query
+    # itself using the collection's attached embedding function.
     results = collection.query(
-        query_embeddings=query_embedding,
+        query_texts=[query],
         n_results=n_results,
         where=where_filter,
     )
