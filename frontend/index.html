@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Field Notes — Biology Research Agent</title>
+    <title>Rebioin AI Agent — Biology &amp; Pharmacovigilance</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
@@ -58,12 +58,29 @@
 
         .label-row {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             justify-content: space-between;
             max-width: 760px;
             margin: 0 auto;
             flex-wrap: wrap;
             gap: 8px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Logo placeholder — once the logo file is added to the frontend
+           folder (e.g. frontend/logo.png), this will show it automatically.
+           Until then, onerror hides it so the layout stays clean rather
+           than showing a broken-image icon. */
+        .brand-logo {
+            height: 32px;
+            width: auto;
+            display: block;
         }
 
         h1 {
@@ -385,8 +402,11 @@
 
     <header>
         <div class="label-row">
-            <h1>Field Notes</h1>
-            <span class="tagline">Biology &amp; Pharmacovigilance Agent</span>
+            <div class="brand">
+                <img class="brand-logo" src="logo.png" alt="Rebioin logo" onerror="this.style.display='none'">
+                <h1>Rebioin AI Agent</h1>
+            </div>
+            <span class="tagline">Biology &amp; Pharmacovigilance</span>
         </div>
         <div class="fields">
             <span>Sources: <b>PubMed · openFDA · Govt. references</b></span>
@@ -420,7 +440,11 @@
     </form>
 
     <script>
-        const API_URL = "http://127.0.0.1:8000/chat";
+        // Single source of truth for the backend URL — update ONLY this
+        // line when deploying (previously this was duplicated in two
+        // places, which made it easy to update one and forget the other).
+        const BASE_URL = "https://rebioin-ai-agent.onrender.com";
+        const API_URL = BASE_URL + "/chat";
         const sessionId = "session_" + Math.random().toString(36).slice(2, 10);
 
         const chat = document.getElementById("chat");
@@ -440,7 +464,7 @@
 
             const who = document.createElement("div");
             who.className = "who";
-            who.textContent = role === "user" ? "You" : "Field Notes";
+            who.textContent = role === "user" ? "You" : "Rebioin AI Agent";
             wrap.appendChild(who);
 
             const bubble = document.createElement("div");
@@ -464,7 +488,7 @@
             wrap.className = "msg agent";
             wrap.id = "thinking-indicator";
             wrap.innerHTML = `
-      <div class="who">Field Notes</div>
+      <div class="who">Rebioin AI Agent</div>
       <div class="bubble thinking">
         Consulting sources
         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
@@ -480,7 +504,7 @@
 
         async function checkStatus() {
             try {
-                const res = await fetch("http://127.0.0.1:8000/");
+                const res = await fetch(BASE_URL + "/");
                 if (res.ok) {
                     statusText.textContent = "Online";
                 } else {
@@ -522,7 +546,7 @@
                 removeThinking();
                 errorNote.style.display = "block";
                 errorNote.textContent =
-                    "Couldn't reach the agent. Confirm the backend is running (uvicorn app.main:app --reload) at 127.0.0.1:8000. " +
+                    "Couldn't reach the agent. Confirm the backend is running at " + BASE_URL + ". " +
                     "(" + err.message + ")";
             } finally {
                 sendBtn.disabled = false;
