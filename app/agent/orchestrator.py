@@ -13,8 +13,6 @@ that:
 This is called "tool calling" or "function calling." The LLM never
 executes code itself — it only ever REQUESTS a tool by name with
 arguments; our code is what actually runs it.
-
-
 """
 
 import os
@@ -83,6 +81,13 @@ For research papers or drug safety data, ask me to look it up." Do not \
 present unverified answers the same way as sourced ones.
 5. Never fabricate a citation, link, or statistic. If a tool returns no \
 results, say so plainly rather than filling in a plausible-sounding answer.
+6. Do NOT blend verified tool content with your own outside general \
+knowledge in the same breath as if both were equally certain. If you add \
+ANY information beyond what a tool actually returned — extra context, \
+related facts, typical values from general training knowledge — you MUST \
+clearly separate it under its own heading, e.g. "Additional context (not \
+from the verified source):", so the student can tell exactly which parts \
+are confirmed against a real document and which parts are not.
 """
 
 
@@ -560,6 +565,23 @@ def run_agent(user_question: str, conversation_history: list = None, max_turns: 
                 answer += "\n\n**Verified sources consulted:**\n"
                 for title, url in all_sources:
                     answer += f"- {title}: {url}\n"
+
+                # Code-guaranteed scope caveat — this ALWAYS appears
+                # whenever sources are shown, regardless of whether the
+                # model actually blended in extra unverified content this
+                # time. We can't reliably detect blending after the fact
+                # with full precision, so instead of trying to catch every
+                # instance, we guarantee the boundary is stated honestly
+                # every time: only the specific facts tied to the sources
+                # above are confirmed against the ingested documents —
+                # anything else in the answer may be the model's own
+                # general knowledge and should be independently verified.
+                answer += (
+                    "\n*Only the specific facts attributed to the source(s) above are "
+                    "confirmed against the ingested documents. Any other details in this "
+                    "answer may come from general knowledge and should be independently "
+                    "verified.*"
+                )
 
             return answer, messages
 
