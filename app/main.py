@@ -5,15 +5,20 @@ Purpose: exposes the agent as a real web API with a /chat endpoint, so
 a website, app, or any other program can send it a question over the
 internet and get an answer back — instead of only running via a Python
 script in the terminal.
-
 """
 
+import os
 from datetime import date
-from fastapi import FastAPI, HTTPException
+
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.agent.orchestrator import run_agent
+
+load_dotenv()
 
 app = FastAPI(title="Bio Research Agent")
 
@@ -27,6 +32,62 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Auth: verifying who's actually asking -----------------------------
+# The frontend sends each student's Supabase login token in the
+# Authorization header. Rather than manually verifying that token's
+# cryptographic signature ourselves (Supabase's newer projects sign
+# tokens with public-key cryptography, which is more complex to handle
+# correctly), we ask Supabase directly: "is this token valid, and who
+# does it belong to?" One small extra network call per request, but
+# much simpler and more robust against Supabase changing internals.
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+
+def get_current_user(authorization: str | None) -> dict | None:
+    """
+    Given the raw Authorization header value (e.g. "Bearer eyJ..."),
+    asks Supabase to verify it and returns the user's info if valid.
+
+    Returns None if there's no header, the header is malformed, the
+    token is invalid/expired, or Supabase's auth setup isn't configured
+    — in all those cases, the request is simply treated as anonymous
+    rather than rejected outright. This keeps the chat endpoint working
+    even for a request with no login (useful during rollout), while
+    still identifying logged-in students when possible.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        # Auth isn't configured on this deployment yet — treat everyone
+        # as anonymous rather than erroring out.
+        return None
+
+    token = authorization[len("Bearer "):]
+
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": SUPABASE_ANON_KEY,
+            },
+            timeout=5,
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"  [Auth check failed (network error), treating as anonymous: {e}]")
+        return None
+
+    if response.status_code != 200:
+        # Invalid or expired token — treat as anonymous rather than
+        # blocking the request outright.
+        return None
+
+    user = response.json()
+    return {"id": user.get("id"), "email": user.get("email")}
+
 
 # Very simple in-memory session store: {session_id: [conversation history]}
 # This is fine for development and a small soft launch. It resets every
@@ -90,8 +151,14 @@ def root():
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, authorization: str | None = Header(None)):
     check_and_record_usage(request.session_id)
+
+    user = get_current_user(authorization)
+    if user:
+        print(f"  [Request from logged-in user: {user['email']}]")
+    else:
+        print("  [Request from anonymous/unauthenticated session]")
 
     history = sessions.get(request.session_id, [])
 
@@ -111,5 +178,8 @@ def chat(request: ChatRequest):
         answer = "The agent didn't return a usable answer. Please try asking again."
 
     sessions[request.session_id] = updated_history
+
+    # NOTE: this is where the next step (saving chat history to Supabase,
+    # tied to user["id"]) will hook in, once the database table exists.
 
     return ChatResponse(answer=answer, session_id=request.session_id)
