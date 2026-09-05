@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rebioin AI Agent — Biology &amp; Pharmacovigilance</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
@@ -73,10 +74,6 @@
             flex-wrap: wrap;
         }
 
-        /* Logo placeholder — once the logo file is added to the frontend
-           folder (e.g. frontend/logo.png), this will show it automatically.
-           Until then, onerror hides it so the layout stays clean rather
-           than showing a broken-image icon. */
         .brand-logo {
             height: 32px;
             width: auto;
@@ -106,6 +103,7 @@
             display: flex;
             gap: 18px;
             flex-wrap: wrap;
+            align-items: center;
             font-family: 'IBM Plex Mono', monospace;
             font-size: 0.7rem;
             color: var(--ink-soft);
@@ -114,6 +112,22 @@
         .fields span b {
             color: var(--ink);
             font-weight: 500;
+        }
+
+        .logout-link {
+            background: none;
+            border: none;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--ink-soft);
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            margin-left: auto;
+        }
+
+        .logout-link:hover {
+            color: var(--amber);
         }
 
         main {
@@ -310,7 +324,7 @@
             }
         }
 
-        form {
+        form#composer-form {
             position: fixed;
             bottom: 0;
             left: 0;
@@ -372,6 +386,7 @@
 
         button:focus-visible,
         textarea:focus-visible,
+        input:focus-visible,
         .chip:focus-visible {
             outline: 2px solid var(--amber-bright);
             outline-offset: 2px;
@@ -395,57 +410,224 @@
                 max-width: 94%;
             }
         }
+
+        /* ---------- Auth screen ---------- */
+
+        #auth-screen {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 20px;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 380px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 32px 28px;
+        }
+
+        .auth-card .brand {
+            justify-content: center;
+            margin-bottom: 6px;
+        }
+
+        .auth-subtitle {
+            text-align: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 24px;
+        }
+
+        .auth-tabs {
+            display: flex;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 9px 0;
+            text-align: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            background: var(--paper);
+            color: var(--ink-soft);
+            border: none;
+        }
+
+        .auth-tab.active {
+            background: var(--moss);
+            color: #F2F3EC;
+        }
+
+        .auth-field {
+            margin-bottom: 14px;
+        }
+
+        .auth-field label {
+            display: block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--ink-soft);
+            margin-bottom: 5px;
+        }
+
+        .auth-field input {
+            width: 100%;
+            padding: 10px 12px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.9rem;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            background: var(--paper);
+            color: var(--ink);
+        }
+
+        .auth-submit {
+            width: 100%;
+            padding: 11px 0;
+            margin-top: 6px;
+        }
+
+        .auth-status {
+            margin-top: 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            text-align: center;
+            min-height: 1em;
+        }
+
+        .auth-status.error {
+            color: #8A2E2E;
+        }
+
+        .auth-status.success {
+            color: var(--moss);
+        }
+
+        .app-hidden {
+            display: none !important;
+        }
     </style>
 </head>
 
 <body>
 
-    <header>
-        <div class="label-row">
+    <!-- ============== AUTH SCREEN (shown when logged out) ============== -->
+    <div id="auth-screen">
+        <div class="auth-card">
             <div class="brand">
                 <img class="brand-logo" src="logo.jpeg" alt="Rebioin logo" onerror="this.style.display='none'">
                 <h1>Rebioin AI Agent</h1>
             </div>
-            <span class="tagline">Biology &amp; Pharmacovigilance</span>
-        </div>
-        <div class="fields">
-            <span>Sources: <b>PubMed · openFDA · Govt. references</b></span>
-            <span>Status: <b id="status-text">Connecting…</b></span>
-        </div>
-    </header>
+            <div class="auth-subtitle">Biology &amp; Pharmacovigilance</div>
 
-    <main id="chat">
-        <div class="empty-state" id="empty-state">
-            <b>Ask a question about biology, pharmacology, or drug safety.</b>
-            This agent searches real research papers and pharmacovigilance data before answering — nothing is made up.
-            <div class="chip-row">
-                <span class="chip" data-q="What side effects have been reported for metformin?">Side effects of
-                    metformin</span>
-                <span class="chip" data-q="Find me recent research papers on malaria drug resistance.">Malaria drug
-                    resistance papers</span>
-                <span class="chip"
-                    data-q="Calculate the half-life of a drug with a first-order rate constant of 0.08 per hour.">Half-life
-                    calculation</span>
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" id="tab-signin">Sign In</button>
+                <button type="button" class="auth-tab" id="tab-signup">Sign Up</button>
             </div>
-        </div>
-    </main>
 
-    <form id="composer-form">
-        <div class="composer">
-            <textarea id="input" rows="1" placeholder="Ask about a drug, a topic, or a calculation…"
-                required></textarea>
-            <button type="submit" id="send-btn">Send</button>
+            <form id="auth-form">
+                <div class="auth-field">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" required autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" required autocomplete="current-password" minlength="6">
+                </div>
+                <button type="submit" class="auth-submit" id="auth-submit-btn">Sign In</button>
+            </form>
+            <div class="auth-status" id="auth-status"></div>
         </div>
-        <div class="error-note" id="error-note" style="display:none;"></div>
-    </form>
+    </div>
+
+    <!-- ============== MAIN APP (hidden until logged in) ============== -->
+    <div id="app-root" class="app-hidden">
+        <header>
+            <div class="label-row">
+                <div class="brand">
+                    <img class="brand-logo" src="logo.jpeg" alt="Rebioin logo" onerror="this.style.display='none'">
+                    <h1>Rebioin AI Agent</h1>
+                </div>
+                <span class="tagline">Biology &amp; Pharmacovigilance</span>
+            </div>
+            <div class="fields">
+                <span>Sources: <b>PubMed · openFDA · Govt. references</b></span>
+                <span>Status: <b id="status-text">Connecting…</b></span>
+                <button type="button" class="logout-link" id="logout-btn">Log out (<span
+                        id="user-email-label"></span>)</button>
+            </div>
+        </header>
+
+        <main id="chat">
+            <div class="empty-state" id="empty-state">
+                <b>Ask a question about biology, pharmacology, or drug safety.</b>
+                This agent searches real research papers and pharmacovigilance data before answering — nothing is
+                made up.
+                <div class="chip-row">
+                    <span class="chip" data-q="What side effects have been reported for metformin?">Side effects of
+                        metformin</span>
+                    <span class="chip" data-q="Find me recent research papers on malaria drug resistance.">Malaria
+                        drug
+                        resistance papers</span>
+                    <span class="chip"
+                        data-q="Calculate the half-life of a drug with a first-order rate constant of 0.08 per hour.">Half-life
+                        calculation</span>
+                </div>
+            </div>
+        </main>
+
+        <form id="composer-form">
+            <div class="composer">
+                <textarea id="input" rows="1" placeholder="Ask about a drug, a topic, or a calculation…"
+                    required></textarea>
+                <button type="submit" id="send-btn">Send</button>
+            </div>
+            <div class="error-note" id="error-note" style="display:none;"></div>
+        </form>
+    </div>
 
     <script>
-        // Single source of truth for the backend URL — update ONLY this
-        // line when deploying (previously this was duplicated in two
-        // places, which made it easy to update one and forget the other).
+        // ---------------- Configuration ----------------
         const BASE_URL = "https://rebioin-ai-agent.onrender.com";
         const API_URL = BASE_URL + "/chat";
+
+        // Supabase project — the anon/publishable key is safe to expose in
+        // frontend code by design (it can only do what your database's
+        // security rules allow it to do).
+        const SUPABASE_URL = "https://ncbacmlkrrokdryotcrw.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_kV18nVlVxnfcv0p0jrZFXA_yhypfHgP";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         const sessionId = "session_" + Math.random().toString(36).slice(2, 10);
+
+        // ---------------- Element references ----------------
+        const authScreen = document.getElementById("auth-screen");
+        const appRoot = document.getElementById("app-root");
+        const authForm = document.getElementById("auth-form");
+        const authEmail = document.getElementById("auth-email");
+        const authPassword = document.getElementById("auth-password");
+        const authSubmitBtn = document.getElementById("auth-submit-btn");
+        const authStatus = document.getElementById("auth-status");
+        const tabSignIn = document.getElementById("tab-signin");
+        const tabSignUp = document.getElementById("tab-signup");
+        const logoutBtn = document.getElementById("logout-btn");
+        const userEmailLabel = document.getElementById("user-email-label");
 
         const chat = document.getElementById("chat");
         const emptyState = document.getElementById("empty-state");
@@ -456,6 +638,88 @@
         const errorNote = document.getElementById("error-note");
 
         marked.setOptions({ breaks: true });
+
+        // ---------------- Auth: sign in / sign up tab switching ----------------
+        let authMode = "signin";
+
+        function setAuthMode(mode) {
+            authMode = mode;
+            authStatus.textContent = "";
+            authStatus.className = "auth-status";
+            if (mode === "signin") {
+                tabSignIn.classList.add("active");
+                tabSignUp.classList.remove("active");
+                authSubmitBtn.textContent = "Sign In";
+                authPassword.setAttribute("autocomplete", "current-password");
+            } else {
+                tabSignUp.classList.add("active");
+                tabSignIn.classList.remove("active");
+                authSubmitBtn.textContent = "Sign Up";
+                authPassword.setAttribute("autocomplete", "new-password");
+            }
+        }
+        tabSignIn.addEventListener("click", () => setAuthMode("signin"));
+        tabSignUp.addEventListener("click", () => setAuthMode("signup"));
+
+        authForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const email = authEmail.value.trim();
+            const password = authPassword.value;
+
+            authSubmitBtn.disabled = true;
+            authStatus.className = "auth-status";
+            authStatus.textContent = authMode === "signin" ? "Signing in…" : "Creating your account…";
+
+            try {
+                if (authMode === "signin") {
+                    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                } else {
+                    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+                    if (error) throw error;
+                    if (!data.session) {
+                        authStatus.className = "auth-status success";
+                        authStatus.textContent = "Account created — check your email to confirm, then sign in.";
+                        setAuthMode("signin");
+                    }
+                }
+            } catch (err) {
+                authStatus.className = "auth-status error";
+                authStatus.textContent = err.message || "Something went wrong. Please try again.";
+            } finally {
+                authSubmitBtn.disabled = false;
+            }
+        });
+
+        logoutBtn.addEventListener("click", async () => {
+            await supabaseClient.auth.signOut();
+        });
+
+        // Central place that reacts to login/logout — fires on page load
+        // (restoring an existing session) AND whenever sign-in/out happens.
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                showApp(session);
+            } else {
+                showAuthScreen();
+            }
+        });
+
+        function showApp(session) {
+            authScreen.classList.add("app-hidden");
+            appRoot.classList.remove("app-hidden");
+            userEmailLabel.textContent = session.user.email;
+            checkStatus();
+        }
+
+        function showAuthScreen() {
+            appRoot.classList.add("app-hidden");
+            authScreen.classList.remove("app-hidden");
+            authEmail.value = "";
+            authPassword.value = "";
+        }
+
+        // ---------------- Chat UI ----------------
 
         function addMessage(role, htmlContent, isMarkdown) {
             emptyState.style.display = "none";
@@ -505,16 +769,11 @@
         async function checkStatus() {
             try {
                 const res = await fetch(BASE_URL + "/");
-                if (res.ok) {
-                    statusText.textContent = "Online";
-                } else {
-                    statusText.textContent = "Unreachable";
-                }
+                statusText.textContent = res.ok ? "Online" : "Unreachable";
             } catch (e) {
                 statusText.textContent = "Backend not running";
             }
         }
-        checkStatus();
 
         async function sendMessage(message) {
             errorNote.style.display = "none";
@@ -525,9 +784,19 @@
             addThinking();
 
             try {
+                // Include the student's Supabase access token so the backend
+                // can (in a later step) verify who's asking and tie chat
+                // history to the right person, instead of trusting the
+                // request blindly.
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                const headers = { "Content-Type": "application/json" };
+                if (session) {
+                    headers["Authorization"] = "Bearer " + session.access_token;
+                }
+
                 const res = await fetch(API_URL, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers,
                     body: JSON.stringify({ message, session_id: sessionId })
                 });
 
