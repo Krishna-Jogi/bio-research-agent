@@ -710,6 +710,29 @@
             appRoot.classList.remove("app-hidden");
             userEmailLabel.textContent = session.user.email;
             checkStatus();
+            loadHistory(session.access_token);
+        }
+
+        async function loadHistory(accessToken) {
+            try {
+                const res = await fetch(BASE_URL + "/history", {
+                    headers: { "Authorization": "Bearer " + accessToken }
+                });
+                if (!res.ok) return;
+                const items = await res.json();
+                if (items.length === 0) return;
+
+                emptyState.style.display = "none";
+                for (const item of items) {
+                    addMessage("user", item.question, false);
+                    addMessage("agent", item.answer, true);
+                }
+            } catch (e) {
+                // History is a nice-to-have, not essential — if it fails
+                // to load, the student can still use the chat normally,
+                // just starting from an empty conversation this time.
+                console.warn("Couldn't load chat history:", e);
+            }
         }
 
         function showAuthScreen() {
