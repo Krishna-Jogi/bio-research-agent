@@ -86,7 +86,70 @@ def get_current_user(authorization: str | None) -> dict | None:
         return None
 
     user = response.json()
-    return {"id": user.get("id"), "email": user.get("email")}
+    # Keep the raw token too — saving/loading history needs to act AS
+    # this specific student (not as some admin-level key), so that the
+    # database's row-level security rules apply correctly and a student
+    # can only ever touch their own rows.
+    return {"id": user.get("id"), "email": user.get("email"), "token": token}
+
+
+def save_chat_message(user_token: str, user_id: str, question: str, answer: str):
+    """
+    Saves one question+answer pair to Supabase, tied to this student.
+
+    Uses the STUDENT'S OWN token (not a powerful admin key) when calling
+    Supabase's API — this means the database's row-level security rule
+    ("you can only insert rows tagged with your own user id") is what
+    actually enforces correctness here, not just trust in our backend
+    code. If this fails, it's logged but doesn't break the chat response
+    — losing one history entry is far better than failing the student's
+    actual question over a storage hiccup.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        return
+
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/chat_history",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {user_token}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={"user_id": user_id, "question": question, "answer": answer},
+            timeout=5,
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"  [Failed to save chat history (non-fatal): {e}]")
+
+
+def load_chat_history(user_token: str) -> list[dict]:
+    """
+    Loads a student's past question+answer pairs, oldest first. Uses
+    their own token, so row-level security automatically restricts this
+    to only their own rows — there's no way to accidentally leak
+    another student's history here, even if this code had a bug.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        return []
+
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/chat_history",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {user_token}",
+            },
+            params={"select": "question,answer,created_at", "order": "created_at.asc"},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"  [Failed to load chat history: {e}]")
+
+    return []
 
 
 # Very simple in-memory session store: {session_id: [conversation history]}
@@ -144,10 +207,31 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+class HistoryItem(BaseModel):
+    question: str
+    answer: str
+    created_at: str
+
+
 @app.get("/")
 def root():
     """Simple health check — confirms the server is running at all."""
     return {"status": "Bio Research Agent is running"}
+
+
+@app.get("/history", response_model=list[HistoryItem])
+def get_history(authorization: str | None = Header(None)):
+    """
+    Returns a logged-in student's past question+answer pairs, oldest
+    first — the frontend uses this right after login to restore their
+    previous conversation. Returns an empty list for anyone not logged
+    in, rather than an error, since history is optional, not required.
+    """
+    user = get_current_user(authorization)
+    if not user:
+        return []
+
+    return load_chat_history(user["token"])
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -179,7 +263,7 @@ def chat(request: ChatRequest, authorization: str | None = Header(None)):
 
     sessions[request.session_id] = updated_history
 
-    # NOTE: this is where the next step (saving chat history to Supabase,
-    # tied to user["id"]) will hook in, once the database table exists.
+    if user:
+        save_chat_message(user["token"], user["id"], request.message, answer)
 
     return ChatResponse(answer=answer, session_id=request.session_id)
